@@ -1,0 +1,1 @@
+cmd_/home/giacomo/shared/driver/Module.symvers := sed 's/ko$$/o/' /home/giacomo/shared/driver/modules.order | scripts/mod/modpost  -a   -o /home/giacomo/shared/driver/Module.symvers -e -i Module.symvers   -T -
