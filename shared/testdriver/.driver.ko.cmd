@@ -1,1 +1,0 @@
-cmd_/home/giacomo/shared/testdriver/driver.ko := ld -r -m elf_x86_64  -z max-page-size=0x200000  --build-id  -T ./scripts/module-common.lds -o /home/giacomo/shared/testdriver/driver.ko /home/giacomo/shared/testdriver/driver.o /home/giacomo/shared/testdriver/driver.mod.o;  true
