@@ -1,1 +1,0 @@
-cmd_/home/giacomo/shared/driver/driver.ko := ld -r -m elf_x86_64  --build-id  -T ./scripts/module-common.lds -o /home/giacomo/shared/driver/driver.ko /home/giacomo/shared/driver/driver.o /home/giacomo/shared/driver/driver.mod.o;  true
