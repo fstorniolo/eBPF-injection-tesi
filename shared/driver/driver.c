@@ -59,6 +59,8 @@
 
 #include "bpf_injection_msg.h"	
 
+#include <linux/mmzone.h>
+
 
 #define NEWDEV_REG_PCI_BAR      0
 #define NEWDEV_BUF_PCI_BAR      1
@@ -71,6 +73,7 @@
 #define NEWDEV_REG_RAISE_IRQ    8	//write (unused in this driver)
 #define NEWDEV_REG_DOORBELL		8
 #define NEWDEV_REG_SETAFFINITY	12
+#define NEWDEV_BUF 16
 
 #define IOCTL_SCHED_SETAFFINITY 13
 #define IOCTL_PROGRAM_INJECTION_RESULT_READY 14
@@ -87,7 +90,7 @@ MODULE_DEVICE_TABLE(pci, pci_ids);
 static int payload_left;
 static int flag;
 static int pci_irq;
-static int major;
+static int major = 1111;
 static struct pci_dev *pdev;
 static void __iomem *bufmmio;
 static DECLARE_WAIT_QUEUE_HEAD(wq);		//wait queue static declaration
@@ -144,6 +147,7 @@ static ssize_t read(struct file *filp, char __user *buf, size_t len, loff_t *off
 	return ret;
 }
 
+
 static ssize_t write(struct file *filp, const char __user *buf, size_t len, loff_t *off)
 {
 	ssize_t ret;
@@ -163,22 +167,52 @@ static ssize_t write(struct file *filp, const char __user *buf, size_t len, loff
 	}
 	pr_info("WRITE\n");
 	return ret;
+} 
+
+static ssize_t mywrite(const char *buf,size_t len, int mmio_offset){
+
+	ssize_t ret = 0;
+	u32 kbuf;
+	int off = 0;
+
+	kbuf = *buf;
+
+	pr_info("MY WRITE\n");
+
+	// pr_info("WRITE SIZE=%ld, OFF=%lld", len, *off);
+
+
+	if(!(len % 4)){
+		while(off < len){
+			pr_info("my write on off: %d",off);
+			iowrite32(kbuf,bufmmio + mmio_offset + off);
+			off += 4;
+			ret += 4;
+		}
+	}
+
+	else{
+		pr_info("write NOT ALIGNED \n");
+	}
+	return ret;
+
 }
+
 
 static loff_t llseek(struct file *filp, loff_t off, int whence)
 {
 	loff_t newpos;
 
   	switch(whence) {
-   		case 0: /* SEEK_SET */
+   		case 0: // SEEK_SET 
 		    newpos = off;
 		    break;
 
-   		case 1: /* SEEK_CUR */
+   		case 1: // SEEK_CUR 
 		    newpos = filp->f_pos + off;
 		    break;
 
-   		default: /* can't happen */
+   		default: // can't happen 
     		return -EINVAL;
   }
   if (newpos<0){
@@ -186,7 +220,8 @@ static loff_t llseek(struct file *filp, loff_t off, int whence)
   }
   filp->f_pos = newpos;
   return newpos;
-}
+} 
+
 
 static long newdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {   
     switch (cmd) {
@@ -320,6 +355,7 @@ static void pci_remove(struct pci_dev *dev)
 	pr_info("pci_remove\n");
 	// pci_release_region(dev, NEWDEV_REG_PCI_BAR);
 	pci_release_region(dev, NEWDEV_BUF_PCI_BAR);
+	pr_info("after releasing region\n");
 	unregister_chrdev(major, DEV_NAME);
 }
 
@@ -331,12 +367,45 @@ static struct pci_driver pci_driver = {
 };
 
 static int myinit(void)
-{
+{	struct zone* zone;
+	struct pglist_data* pgdat;
+	char buf[4];
+
+
+	pr_info("Init Driver pr_info\n");
+	printk(KERN_INFO "Init Driver printk");
+
+
 	if (pci_register_driver(&pci_driver) < 0) {
 		return 1;
 	}
 
+	memcpy(buf,"ciao",4);
+
+	printk(KERN_INFO "Ciao %s",buf);
+	mywrite(buf, 4, NEWDEV_BUF);
+
+	/* for_each_zone(zone){
+		if(zone == NULL)
+			printk(KERN_INFO "NULL Pointer to zone");
+		else
+			printk(KERN_INFO "Zona id %s",zone->name);
+	}
+
+	printk(KERN_INFO "STAMPO PGDAT");
+	for_each_online_pgdat(pgdat){
+		if(pgdat == NULL)
+			printk(KERN_INFO "NULL Pointer to pgdat");
+		else
+		{
+			printk(KERN_INFO "PGDATE NOT NULL");
+			printk(KERN_INFO "Numero di zone in pgdat %d",pgdat->nr_zones);
+			printk(KERN_INFO "DOPO NUMERO DI ZONE");
+		}
+	} */
+
 	return 0;
+
 }
 
 static void myexit(void)
