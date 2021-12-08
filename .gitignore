@@ -2,3 +2,8 @@
 *.qcow2
 *.iso
 *.cmd
+buildubuntu.sh.save
+*.symvers
+*.ko
+*.mod
+*.order
