@@ -169,23 +169,19 @@ static ssize_t write(struct file *filp, const char __user *buf, size_t len, loff
 	return ret;
 } 
 
-static ssize_t mywrite(const char *buf,size_t len, int mmio_offset){
+static ssize_t mywrite(struct bpf_injection_msg_t mymsg, int mmio_offset){
 
 	ssize_t ret = 0;
-	u32 kbuf;
 	int off = 0;
 
-	kbuf = *buf;
-
-	pr_info("MY WRITE\n");
-
 	// pr_info("WRITE SIZE=%ld, OFF=%lld", len, *off);
+	iowrite32(*((u32*)&mymsg.header), bufmmio + mmio_offset);
 
-
-	if(!(len % 4)){
-		while(off < len){
-			pr_info("my write on off: %d",off);
-			iowrite32(kbuf,bufmmio + mmio_offset + off);
+	if(!(mymsg.header.payload_len % 4)){
+		while(off < mymsg.header.payload_len){
+			// pr_info("MY WRITE VAL: %d \n", kbuf);
+			// pr_info("my write on off: %d \n",off);
+			iowrite32(*((u32*)(mymsg.payload + off)), bufmmio + mmio_offset + off + 4);
 			off += 4;
 			ret += 4;
 		}
@@ -195,7 +191,6 @@ static ssize_t mywrite(const char *buf,size_t len, int mmio_offset){
 		pr_info("write NOT ALIGNED \n");
 	}
 	return ret;
-
 }
 
 
@@ -366,10 +361,30 @@ static struct pci_driver pci_driver = {
 	.remove   = pci_remove,
 };
 
+struct bpf_injection_msg_t prepare_bpf_message(u32* path, int type, int size){
+	struct bpf_injection_msg_t mymsg;
+
+	mymsg.header.version = DEFAULT_VERSION;
+	mymsg.header.type = PROGRAM_INJECTION;
+	mymsg.header.payload_len = size;
+
+	mymsg.payload = path;
+
+  	return mymsg;
+}
+
+void print_bpf_injection_message(struct bpf_injection_msg_header myheader){
+	pr_info("  Version:%u\n  Type:%u\n  Payload_len:%u\n", myheader.version, myheader.type, myheader.payload_len);
+}
+
+
 static int myinit(void)
-{	struct zone* zone;
+{	
+	struct zone* zone;
 	struct pglist_data* pgdat;
-	char buf[4];
+	//char buf[4];
+	struct bpf_injection_msg_t mymsg;
+	int prova;
 
 
 	pr_info("Init Driver pr_info\n");
@@ -380,10 +395,18 @@ static int myinit(void)
 		return 1;
 	}
 
-	memcpy(buf,"ciao",4);
 
-	printk(KERN_INFO "Ciao %s",buf);
-	mywrite(buf, 4, NEWDEV_BUF);
+
+	prova = 5;
+	// memcpy(buf,"ciao",4);
+
+	// printk(KERN_INFO "Ciao %s",buf);
+	// mywrite(buf, 4, NEWDEV_BUF);
+
+	mymsg = prepare_bpf_message((u32 *) &prova, FIRST_ROUND_MIGRATION, 4);
+	print_bpf_injection_message(mymsg.header);
+	pr_info("Payload: %d \n", *(u32*)mymsg.payload);
+	mywrite(mymsg,NEWDEV_BUF);
 
 	/* for_each_zone(zone){
 		if(zone == NULL)

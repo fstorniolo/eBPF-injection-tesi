@@ -19,6 +19,7 @@
 #define RESET								17
 #define PIN_ON_SAME							18
 #define HT_REMAPPING							19
+#define FIRST_ROUND_MIGRATION				20
 /* version defines */
 #define DEFAULT_VERSION 					1
 
@@ -51,4 +52,7 @@ struct cpu_affinity_infos_t {
 	uint16_t n_vCPU;
 	//bool* pin;	//unnecessary in message
 };
+
+
+
 
