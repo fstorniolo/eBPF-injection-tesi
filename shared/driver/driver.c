@@ -311,11 +311,15 @@ static int pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
 	pr_info("pci_probe\n");
 	major = register_chrdev(0, DEV_NAME, &fops);
+		pr_info("pci_probe: register_chrdev \n");
+
 	pdev = dev;
 	if (pci_enable_device(dev) < 0) {
 		dev_err(&(pdev->dev), "pci_enable_device\n");
 		goto error;
 	}
+	pr_info("pci_probe: pci_enable_device \n");
+
 	// if (pci_request_region(dev, NEWDEV_REG_PCI_BAR, "myregion0")) {
 	// 	dev_err(&(pdev->dev), "pci_request_region0\n");
 	// 	goto error;
@@ -326,16 +330,23 @@ static int pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		dev_err(&(pdev->dev), "pci_request_region1\n");
 		goto error;
 	}
+	pr_info("pci_probe: pci_request_region \n");
+
 	bufmmio = pci_iomap(pdev, NEWDEV_BUF_PCI_BAR, pci_resource_len(pdev, NEWDEV_BUF_PCI_BAR));
-	
+	pr_info("pci_probe: pci_iomap \n");
+
 
 	/* IRQ setup. */
 	pci_read_config_byte(dev, PCI_INTERRUPT_LINE, &val);
+	pr_info("pci_probe: pci_read_config_byte \n");
+
 	pci_irq = val;
 	if (request_irq(pci_irq, irq_handler, IRQF_SHARED, "pci_irq_handler0", &major) < 0) {
+		pr_info("pci_probe: error in request_irq, irq: %d \n", pci_irq);
 		dev_err(&(dev->dev), "request_irq\n");
 		goto error;
 	}
+	pr_info("pci_probe: pci_irq %d \n", pci_irq);
 
 	flag = 0;
 	pr_info("pci_probe COMPLETED SUCCESSFULLY\n");
@@ -345,13 +356,34 @@ error:
 	return 1;
 }
 
-static void pci_remove(struct pci_dev *dev)
+static void pci_remove(struct pci_dev *pdev)
 {
+	char* free_irq_ret;
+
 	pr_info("pci_remove\n");
-	// pci_release_region(dev, NEWDEV_REG_PCI_BAR);
-	pci_release_region(dev, NEWDEV_BUF_PCI_BAR);
-	pr_info("after releasing region\n");
+
+	pr_info("pci_remove: freeing pci_irq %d \n", pci_irq);
+	free_irq_ret = free_irq(pci_irq, &major);
+
+	pr_info("pci_remove: free OK, ret %s \n", free_irq_ret);
+
+
+
+	pci_free_irq_vectors(pdev);
+	pr_info("pci_remove: pci_free_irq_vectors OK \n");
+
 	unregister_chrdev(major, DEV_NAME);
+	pr_info("pci_remove: unregister_chrdev OK \n");
+
+	iounmap(bufmmio);
+	pr_info("pci_remove: iounmap OK\n");
+
+	pci_disable_device(pdev);
+	pr_info("pci_remove: pci_disable_device OK\n");
+
+	pci_release_region(pdev, NEWDEV_BUF_PCI_BAR);
+	pr_info("pci_remove: pci_release_selected_regions OK\n");
+
 }
 
 static struct pci_driver pci_driver = {
@@ -408,7 +440,7 @@ static int myinit(void)
 	pr_info("Payload: %d \n", *(u32*)mymsg.payload);
 	mywrite(mymsg,NEWDEV_BUF);
 
-	/* for_each_zone(zone){
+	 for_each_zone(zone){
 		if(zone == NULL)
 			printk(KERN_INFO "NULL Pointer to zone");
 		else
@@ -418,14 +450,13 @@ static int myinit(void)
 	printk(KERN_INFO "STAMPO PGDAT");
 	for_each_online_pgdat(pgdat){
 		if(pgdat == NULL)
-			printk(KERN_INFO "NULL Pointer to pgdat");
+			printk(KERN_INFO "NULL Pointer to pgdat\n");
 		else
 		{
-			printk(KERN_INFO "PGDATE NOT NULL");
-			printk(KERN_INFO "Numero di zone in pgdat %d",pgdat->nr_zones);
-			printk(KERN_INFO "DOPO NUMERO DI ZONE");
+			printk(KERN_INFO "PGDAT NOT NULL\n");
+			printk(KERN_INFO "Numero di zone in pgdat %d\n",pgdat->nr_zones);
 		}
-	} */
+	} 
 
 	return 0;
 
