@@ -7,3 +7,4 @@ buildubuntu.sh.save
 *.ko
 *.mod
 *.order
+*.mod.c

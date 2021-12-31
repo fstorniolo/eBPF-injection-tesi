@@ -39,7 +39,7 @@ fi
 # /home/giacomo/Desktop/tesi/qemu/build/x86_64-softmmu/qemu-system-x86_64
 # Run the installed image.
 /home/filippo/Desktop/Tesi/qemu/build/x86_64-softmmu/qemu-system-x86_64 \
-  -drive "file="${disk_img}",format=qcow2" \
+  -drive "file="${disk_img_snapshot}",format=qcow2" \
   -enable-kvm \
   -m 2G \
   -smp 2 \
