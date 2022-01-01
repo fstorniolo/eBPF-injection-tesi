@@ -73,7 +73,8 @@
 #define NEWDEV_REG_RAISE_IRQ    8	//write (unused in this driver)
 #define NEWDEV_REG_DOORBELL		8
 #define NEWDEV_REG_SETAFFINITY	12
-#define NEWDEV_BUF 16
+#define NEWDEV_BUF 				16
+#define HEADER_OFFSET			4
 
 #define IOCTL_SCHED_SETAFFINITY 13
 #define IOCTL_PROGRAM_INJECTION_RESULT_READY 14
@@ -94,7 +95,6 @@ static int major = 1111;
 static struct pci_dev *pdev;
 static void __iomem *bufmmio;
 static DECLARE_WAIT_QUEUE_HEAD(wq);		//wait queue static declaration
-
 
 static ssize_t read(struct file *filp, char __user *buf, size_t len, loff_t *off)
 {
@@ -169,8 +169,8 @@ static ssize_t write(struct file *filp, const char __user *buf, size_t len, loff
 	return ret;
 } 
 
-static ssize_t mywrite(struct bpf_injection_msg_t mymsg, int mmio_offset){
-
+static ssize_t mywrite(struct bpf_injection_msg_t mymsg, int mmio_offset)
+{
 	ssize_t ret = 0;
 	int off = 0;
 
@@ -191,6 +191,69 @@ static ssize_t mywrite(struct bpf_injection_msg_t mymsg, int mmio_offset){
 		pr_info("write NOT ALIGNED \n");
 	}
 	return ret;
+}
+
+
+
+static void write_guest_free_pages(void)
+{
+	// GET GUEST FREE PAGES
+	int count = 0;
+	unsigned long addr;
+	u32 high_addr, low_addr, order;
+	struct bpf_injection_msg_header header;
+
+	addr = 6;
+	order = 0;
+
+	high_addr = (addr & 0xffffffff00000000) >> 32;
+	low_addr = (addr & 0x00000000ffffffff);
+	pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
+
+
+	// bufmmio + BUF offset + new offset + address for the header 
+	iowrite32(high_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+	count++;
+	iowrite32(low_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+	count++;
+	iowrite32(order,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+	count++;
+
+	addr = 5;
+	order = 5;
+
+	high_addr = (addr & 0xffffffff00000000) >> 32;
+	low_addr = (addr & 0x00000000ffffffff);
+	pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
+	
+	iowrite32(high_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+	count++;
+	iowrite32(low_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+	count++;
+	iowrite32(order,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+	count++;
+
+	addr = 0x7f1770e00000;
+	order = 10;
+
+	high_addr = (addr & 0xffffffff00000000) >> 32;
+	low_addr = (addr & 0x00000000ffffffff);
+	pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
+
+	iowrite32(high_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+	count++;
+	iowrite32(low_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+	count++;
+	iowrite32(order,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+	count++;
+
+	header.version = DEFAULT_VERSION;
+	header.type = FIRST_ROUND_MIGRATION;
+	header.payload_len = count * sizeof(u32);
+
+	iowrite32(*(u32*)&header, bufmmio + NEWDEV_BUF);
+
+	iowrite32(0,bufmmio + NEWDEV_REG_DOORBELL);
 }
 
 
@@ -414,10 +477,6 @@ static int myinit(void)
 {	
 	struct zone* zone;
 	struct pglist_data* pgdat;
-	//char buf[4];
-	struct bpf_injection_msg_t mymsg;
-	int prova;
-
 
 	pr_info("Init Driver pr_info\n");
 	printk(KERN_INFO "Init Driver printk");
@@ -427,18 +486,7 @@ static int myinit(void)
 		return 1;
 	}
 
-
-
-	prova = 5;
-	// memcpy(buf,"ciao",4);
-
-	// printk(KERN_INFO "Ciao %s",buf);
-	// mywrite(buf, 4, NEWDEV_BUF);
-
-	mymsg = prepare_bpf_message((u32 *) &prova, FIRST_ROUND_MIGRATION, 4);
-	print_bpf_injection_message(mymsg.header);
-	pr_info("Payload: %d \n", *(u32*)mymsg.payload);
-	mywrite(mymsg,NEWDEV_BUF);
+	write_guest_free_pages();
 
 	 for_each_zone(zone){
 		if(zone == NULL)
