@@ -61,6 +61,10 @@
 
 #include <linux/mmzone.h>
 
+#include <linux/mm_types.h>
+#include <linux/spinlock.h>
+#include <linux/mm.h>
+
 
 #define NEWDEV_REG_PCI_BAR      0
 #define NEWDEV_BUF_PCI_BAR      1
@@ -199,10 +203,61 @@ static void write_guest_free_pages(void)
 {
 	// GET GUEST FREE PAGES
 	int count = 0;
-	unsigned long addr;
 	u32 high_addr, low_addr, order;
 	struct bpf_injection_msg_header header;
+	struct zone* zone;
+	// struct pglist_data* pgdat;
+	struct free_area* free_area;
+	struct page* page;
+	unsigned long flags;
+	unsigned long phys_addr;
+	int i;
 
+	for_each_zone(zone){
+		if(zone == NULL){
+			printk(KERN_INFO "NULL Pointer to zone");
+			continue;
+		}
+
+		printk(KERN_INFO "Zona id %s",zone->name);
+
+		spin_lock_irqsave(&zone->lock, flags);
+		pr_info("SPIN LOCK ACQUISITO \n");
+		for(i = 0; i <= MAX_ORDER; i++){
+			free_area = &zone->free_area[i];
+	
+			page = list_entry(&free_area->free_list[MIGRATE_MOVABLE], struct page, lru);
+	
+			if(page == NULL)
+				pr_info("page null \n");
+
+			else{
+
+				phys_addr = page_to_pfn(page) << PAGE_SHIFT;
+				pr_info("Physical Address: %lx \n", phys_addr);
+
+				high_addr = (phys_addr & 0xffffffff00000000) >> 32;
+				low_addr = (phys_addr & 0x00000000ffffffff);
+				order = i-;
+				
+				pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
+
+				// bufmmio + BUF offset + new offset + address for the header 
+				iowrite32(high_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+				count++;
+				iowrite32(low_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+				count++;
+				iowrite32(order,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+				count++;
+
+				}
+			spin_unlock_irqrestore(&zone->lock, flags);
+		}
+	}
+
+
+
+	/*
 	addr = 6;
 	order = 0;
 
@@ -246,6 +301,7 @@ static void write_guest_free_pages(void)
 	count++;
 	iowrite32(order,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
 	count++;
+	*/
 
 	header.version = DEFAULT_VERSION;
 	header.type = FIRST_ROUND_MIGRATION;
@@ -421,16 +477,10 @@ error:
 
 static void pci_remove(struct pci_dev *pdev)
 {
-	char* free_irq_ret;
-
 	pr_info("pci_remove\n");
 
 	pr_info("pci_remove: freeing pci_irq %d \n", pci_irq);
-	free_irq_ret = free_irq(pci_irq, &major);
-
-	pr_info("pci_remove: free OK, ret %s \n", free_irq_ret);
-
-
+	free_irq(pci_irq, &major);
 
 	pci_free_irq_vectors(pdev);
 	pr_info("pci_remove: pci_free_irq_vectors OK \n");
