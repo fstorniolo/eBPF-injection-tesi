@@ -60,11 +60,11 @@
 #include "bpf_injection_msg.h"	
 
 #include <linux/mmzone.h>
-
+#include <linux/types.h>
 #include <linux/mm_types.h>
 #include <linux/spinlock.h>
 #include <linux/mm.h>
-
+#include <linux/atomic.h>
 
 #define NEWDEV_REG_PCI_BAR      0
 #define NEWDEV_BUF_PCI_BAR      1
@@ -211,7 +211,18 @@ static void write_guest_free_pages(void)
 	struct page* page;
 	unsigned long flags;
 	unsigned long phys_addr;
-	int i;
+	int i;	int ret = 0;
+	unsigned seq;
+	unsigned long spanned_pages, start_pfn, present_pages;
+	unsigned long managed_pages;
+	struct list_head* tmp;
+	int j;
+	enum migratetype migrate_type;
+	unsigned long free_area_pages;
+
+	/* for_each_zone(zone){
+		spin_lock_irqsave(&zone->lock, flags);
+	} */
 
 	for_each_zone(zone){
 		if(zone == NULL){
@@ -219,8 +230,79 @@ static void write_guest_free_pages(void)
 			continue;
 		}
 
-		printk(KERN_INFO "Zona id %s",zone->name);
 
+
+		printk(KERN_INFO "Zone Name %s \n",zone->name);
+		do {
+			seq = zone_span_seqbegin(zone);
+			start_pfn = zone->zone_start_pfn;
+			spanned_pages = zone->spanned_pages;
+
+		} while (zone_span_seqretry(zone, seq));
+
+		present_pages = zone->present_pages;
+		managed_pages = atomic_long_read(&zone->managed_pages);
+
+		pr_info("start_pfn: %lu spanned_pages: %lu present_pages: %lu managed_pages: %lu \n", start_pfn, spanned_pages, present_pages, managed_pages);
+		/*tmp = reinterpret_cast<unsigned long>(managed_pages);
+
+		if(tmp == 0){
+			pr_info("No pages in this zone \n");
+			continue;
+		}*/
+
+		if(!managed_pages){
+			pr_info("managed_pages is 0 \n");
+			continue;
+		}
+
+		spin_lock_irqsave(&zone->lock, flags);
+		pr_info("Lock acquired \n");
+		for(i = 0; i < MAX_ORDER; i++){
+			// Get access to free page list with order i
+			free_area = &zone->free_area[i];
+			pr_info("free_area order %d has %lu free pages \n", i, free_area->nr_free);
+			free_area_pages = 0;
+
+			for(j = 0; j != MIGRATE_TYPES; j++){
+				// Iterate on migratetype
+
+				list_for_each(tmp, &free_area->free_list[j]){
+					page = list_first_entry_or_null(tmp, struct page, lru);
+	
+					if(page == NULL){
+						pr_info("page NULL \n");
+						continue;
+					}
+					free_area_pages++;
+					phys_addr = PFN_PHYS(page_to_pfn(page));
+					pr_info("page_to_pfn: %lx PAGE_SHIFT: %d \n", page_to_pfn(page), PAGE_SHIFT);
+					pr_info("Physical Address: %lx \n", phys_addr);
+	
+					high_addr = (phys_addr & 0xffffffff00000000) >> 32;
+					low_addr = (phys_addr & 0x00000000ffffffff);
+					order = i;
+					
+					pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
+	
+					// bufmmio + BUF offset + new offset + address for the header 
+					iowrite32(high_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+					count++;
+					iowrite32(low_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+					count++;
+					iowrite32(order,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+					count++;				
+				}
+			}
+			pr_info("read pages %lu of %lu \n", free_area_pages, free_area->nr_free);
+
+		}
+			spin_unlock_irqrestore(&zone->lock, flags);
+			pr_info("\n");
+
+	}
+
+		/*
 		spin_lock_irqsave(&zone->lock, flags);
 		pr_info("SPIN LOCK ACQUISITO \n");
 		for(i = 0; i <= MAX_ORDER; i++){
@@ -233,12 +315,13 @@ static void write_guest_free_pages(void)
 
 			else{
 
-				phys_addr = page_to_pfn(page) << PAGE_SHIFT;
+				phys_addr = PFN_PHYS(page_to_pfn(page));
+				pr_info("page_to_pfn: %lx PAGE_SHIFT: %d \n", page_to_pfn(page), PAGE_SHIFT);
 				pr_info("Physical Address: %lx \n", phys_addr);
 
 				high_addr = (phys_addr & 0xffffffff00000000) >> 32;
 				low_addr = (phys_addr & 0x00000000ffffffff);
-				order = i-;
+				order = i;
 				
 				pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
 
@@ -253,7 +336,8 @@ static void write_guest_free_pages(void)
 				}
 			spin_unlock_irqrestore(&zone->lock, flags);
 		}
-	}
+		
+	} */
 
 
 
@@ -310,6 +394,11 @@ static void write_guest_free_pages(void)
 	iowrite32(*(u32*)&header, bufmmio + NEWDEV_BUF);
 
 	iowrite32(0,bufmmio + NEWDEV_REG_DOORBELL);
+
+	/*for_each_zone(zone){
+		pr_info("UNLOCK zone %s \n", zone->name);
+		spin_unlock_irqrestore(&zone->lock, flags);
+	}*/
 }
 
 
