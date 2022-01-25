@@ -20,7 +20,8 @@ iso="${id}.iso"
   -fsdev local,id=test_dev,path=shared,security_model=none \
   -device virtio-9p-pci,fsdev=test_dev,mount_tag=shared \
   -device newdev \
-  -incoming tcp:0:4444
+  -incoming tcp:0:4444 \
+  -serial stdio \
   "$@" \
 ;
 

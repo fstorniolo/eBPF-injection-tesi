@@ -209,7 +209,7 @@ static void write_guest_free_pages(void)
 	// struct pglist_data* pgdat;
 	struct free_area* free_area;
 	struct page* page;
-	unsigned long flags;
+	unsigned long flags[2];
 	unsigned long phys_addr;
 	int i;	int ret = 0;
 	unsigned seq;
@@ -219,10 +219,25 @@ static void write_guest_free_pages(void)
 	int j;
 	enum migratetype migrate_type;
 	unsigned long free_area_pages;
+	struct zone* zones[2];
+	int k = 0;
+	
+	for_each_populated_zone(zone){
+		printk(KERN_INFO "Populated Zone Name %s \n",zone->name);
+		zones[k] = zone;
+		k++;
+	}
 
-	/* for_each_zone(zone){
-		spin_lock_irqsave(&zone->lock, flags);
-	} */
+	k = 0;
+
+	for_each_populated_zone(zone){
+		printk(KERN_INFO "Populated Zone Name %s \n",zone->name);
+		zones[k] = zone;
+		spin_lock_irqsave(&zones[k]->lock, flags[k]);
+		k++;
+	}
+	 
+
 
 	for_each_zone(zone){
 		if(zone == NULL){
@@ -244,19 +259,14 @@ static void write_guest_free_pages(void)
 		managed_pages = atomic_long_read(&zone->managed_pages);
 
 		pr_info("start_pfn: %lu spanned_pages: %lu present_pages: %lu managed_pages: %lu \n", start_pfn, spanned_pages, present_pages, managed_pages);
-		/*tmp = reinterpret_cast<unsigned long>(managed_pages);
 
-		if(tmp == 0){
-			pr_info("No pages in this zone \n");
-			continue;
-		}*/
 
 		if(!managed_pages){
 			pr_info("managed_pages is 0 \n");
 			continue;
 		}
 
-		spin_lock_irqsave(&zone->lock, flags);
+		// spin_lock_irqsave(&zone->lock, flags);
 		pr_info("Lock acquired \n");
 		for(i = 0; i < MAX_ORDER; i++){
 			// Get access to free page list with order i
@@ -276,14 +286,14 @@ static void write_guest_free_pages(void)
 					}
 					free_area_pages++;
 					phys_addr = PFN_PHYS(page_to_pfn(page));
-					pr_info("page_to_pfn: %lx PAGE_SHIFT: %d \n", page_to_pfn(page), PAGE_SHIFT);
-					pr_info("Physical Address: %lx \n", phys_addr);
+					// pr_info("page_to_pfn: %lx PAGE_SHIFT: %d \n", page_to_pfn(page), PAGE_SHIFT);
+					// pr_info("Physical Address: %lx \n", phys_addr);
 	
 					high_addr = (phys_addr & 0xffffffff00000000) >> 32;
 					low_addr = (phys_addr & 0x00000000ffffffff);
 					order = i;
 					
-					pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
+					// pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
 	
 					// bufmmio + BUF offset + new offset + address for the header 
 					iowrite32(high_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
@@ -297,95 +307,10 @@ static void write_guest_free_pages(void)
 			pr_info("read pages %lu of %lu \n", free_area_pages, free_area->nr_free);
 
 		}
-			spin_unlock_irqrestore(&zone->lock, flags);
+			// spin_unlock_irqrestore(&zone->lock, flags);
 			pr_info("\n");
 
 	}
-
-		/*
-		spin_lock_irqsave(&zone->lock, flags);
-		pr_info("SPIN LOCK ACQUISITO \n");
-		for(i = 0; i <= MAX_ORDER; i++){
-			free_area = &zone->free_area[i];
-	
-			page = list_entry(&free_area->free_list[MIGRATE_MOVABLE], struct page, lru);
-	
-			if(page == NULL)
-				pr_info("page null \n");
-
-			else{
-
-				phys_addr = PFN_PHYS(page_to_pfn(page));
-				pr_info("page_to_pfn: %lx PAGE_SHIFT: %d \n", page_to_pfn(page), PAGE_SHIFT);
-				pr_info("Physical Address: %lx \n", phys_addr);
-
-				high_addr = (phys_addr & 0xffffffff00000000) >> 32;
-				low_addr = (phys_addr & 0x00000000ffffffff);
-				order = i;
-				
-				pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
-
-				// bufmmio + BUF offset + new offset + address for the header 
-				iowrite32(high_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-				count++;
-				iowrite32(low_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-				count++;
-				iowrite32(order,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-				count++;
-
-				}
-			spin_unlock_irqrestore(&zone->lock, flags);
-		}
-		
-	} */
-
-
-
-	/*
-	addr = 6;
-	order = 0;
-
-	high_addr = (addr & 0xffffffff00000000) >> 32;
-	low_addr = (addr & 0x00000000ffffffff);
-	pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
-
-
-	// bufmmio + BUF offset + new offset + address for the header 
-	iowrite32(high_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-	count++;
-	iowrite32(low_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-	count++;
-	iowrite32(order,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-	count++;
-
-	addr = 5;
-	order = 5;
-
-	high_addr = (addr & 0xffffffff00000000) >> 32;
-	low_addr = (addr & 0x00000000ffffffff);
-	pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
-	
-	iowrite32(high_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-	count++;
-	iowrite32(low_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-	count++;
-	iowrite32(order,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-	count++;
-
-	addr = 0x7f1770e00000;
-	order = 10;
-
-	high_addr = (addr & 0xffffffff00000000) >> 32;
-	low_addr = (addr & 0x00000000ffffffff);
-	pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
-
-	iowrite32(high_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-	count++;
-	iowrite32(low_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-	count++;
-	iowrite32(order,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-	count++;
-	*/
 
 	header.version = DEFAULT_VERSION;
 	header.type = FIRST_ROUND_MIGRATION;
@@ -395,10 +320,16 @@ static void write_guest_free_pages(void)
 
 	iowrite32(0,bufmmio + NEWDEV_REG_DOORBELL);
 
-	/*for_each_zone(zone){
-		pr_info("UNLOCK zone %s \n", zone->name);
-		spin_unlock_irqrestore(&zone->lock, flags);
-	}*/
+	for_each_populated_zone(zone){
+		printk(KERN_INFO "Populated Zone Name %s \n",zone->name);
+		k--;
+		zones[k] = zone;
+		spin_unlock_irqrestore(&zones[k]->lock, flags[k]);
+	}
+	
+
+
+
 }
 
 
@@ -450,6 +381,37 @@ static long newdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return 0;
 }
 
+void setup_migration_phase_start(void)
+{
+	write_guest_free_pages();
+}
+
+
+void setup_migration_phase_ended(void)
+{
+	struct zone *zone;
+	unsigned long spanned_pages, start_pfn, present_pages;
+	unsigned long managed_pages;
+	unsigned seq;
+
+	pr_info("setup_migration_phase_ended FUNCTION \n");
+
+	for_each_populated_zone(zone){
+		printk(KERN_INFO "Zone Name %s \n",zone->name);
+		do {
+			seq = zone_span_seqbegin(zone);
+			start_pfn = zone->zone_start_pfn;
+			spanned_pages = zone->spanned_pages;
+
+		} while (zone_span_seqretry(zone, seq));
+
+		present_pages = zone->present_pages;
+		managed_pages = atomic_long_read(&zone->managed_pages);
+
+		pr_info("start_pfn: %lu spanned_pages: %lu present_pages: %lu managed_pages: %lu \n", start_pfn, spanned_pages, present_pages, managed_pages);
+	}
+}
+
 /* These fops are a bit daft since read and write interfaces don't map well to IO registers.
  * One ioctl per register would likely be the saner option. But we are lazy.
  * We use the fact that every IO is aligned to 4 bytes. Misaligned reads means EOF. */
@@ -476,18 +438,31 @@ static irqreturn_t irq_handler(int irq, void *dev){
 		pr_info("me handling like a god?\n");
 
 		switch(irq_status){
+
 			case PROGRAM_INJECTION:
 				pr_info("case PROGRAM_INJECTION irq handler\n");
 				pr_info("waking up interruptible process...\n");
 				flag = 2;
 				wake_up_interruptible(&wq);
 				break;
+
 			case PROGRAM_INJECTION_AFFINITY:
 				pr_info("case PROGRAM_INJECTION_AFFINITY irq handler\n");
 				pr_info("waking up interruptible process...\n");
 				flag = 2;
 				wake_up_interruptible(&wq);
 				break;
+
+			case FIRST_ROUND_MIGRATION_ENDED:
+				pr_info("case FIRST_ROUND_MIGRATION_ENDED irq handler \n");
+				setup_migration_phase_ended();
+				break;
+
+			case FIRST_ROUND_MIGRATION_START:
+				pr_info("case FIRST_ROUND_MIGRATION_START irq handler \n");
+				setup_migration_phase_start();
+				break;				
+
 			case 22:		//init irq_handler (old raw data)
 				pr_info("handling irq 22 for INIT\n");
 				//init_handler();
@@ -495,6 +470,7 @@ static irqreturn_t irq_handler(int irq, void *dev){
 				flag = 1;
 				wake_up_interruptible(&wq);
 				break;
+
 		}
 
 		/* Must do this ACK, or else the interrupts just keeps firing. */
@@ -614,8 +590,10 @@ void print_bpf_injection_message(struct bpf_injection_msg_header myheader){
 
 static int myinit(void)
 {	
+	
 	struct zone* zone;
 	struct pglist_data* pgdat;
+	
 
 	pr_info("Init Driver pr_info\n");
 	printk(KERN_INFO "Init Driver printk");
@@ -625,7 +603,8 @@ static int myinit(void)
 		return 1;
 	}
 
-	write_guest_free_pages();
+	
+	// write_guest_free_pages();
 
 	 for_each_zone(zone){
 		if(zone == NULL)
@@ -644,6 +623,7 @@ static int myinit(void)
 			printk(KERN_INFO "Numero di zone in pgdat %d\n",pgdat->nr_zones);
 		}
 	} 
+	
 
 	return 0;
 
