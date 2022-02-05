@@ -80,10 +80,6 @@
 #define NEWDEV_BUF 				16
 #define HEADER_OFFSET			4
 
-#define IOCTL_SCHED_SETAFFINITY 13
-#define IOCTL_PROGRAM_INJECTION_RESULT_READY 14
-
-
 MODULE_LICENSE("GPL");
 
 static struct pci_device_id pci_ids[] = {
@@ -92,86 +88,12 @@ static struct pci_device_id pci_ids[] = {
 };
 MODULE_DEVICE_TABLE(pci, pci_ids);
 
-static int payload_left;
 static int flag;
 static int pci_irq;
 static int major = 1111;
 static struct pci_dev *pdev;
 static void __iomem *bufmmio;
 static DECLARE_WAIT_QUEUE_HEAD(wq);		//wait queue static declaration
-
-static ssize_t read(struct file *filp, char __user *buf, size_t len, loff_t *off)
-{
-	ssize_t ret;
-	u32 kbuf;
-	struct bpf_injection_msg_header myheader;
-
-	// pr_info("READ SIZE=%ld, OFF=%lld", len, *off);
-	// printk(KERN_INFO "Inside read\n");
-	// printk(KERN_INFO "Scheduling Out\n");
-	wait_event_interruptible(wq, flag >= 1);
-	
-	// printk(KERN_INFO "Woken Up flag:%d\n", flag);
-
-	if (*off % 4 || len == 0) {
-		// pr_info("read off=%lld or size=%ld error, NOT ALIGNED 4!\n", *off, len);
-		ret = 0;
-	} else {
-		// pr_info("filp->fpos:\t%lld\n", filp->f_pos);
-		kbuf = ioread32(bufmmio + *off);
-
-		// pr_info("After ioread=>\tfilp->fpos:\t%lld\n", filp->f_pos);
-		// pr_info("ioread32: %x\n", kbuf);
-
-		if(flag == 2){
-			memcpy(&myheader, &kbuf, sizeof(kbuf));
-			pr_info("  Version:%u\n  Type:%u\n  Payload_len:%u\n", myheader.version, myheader.type, myheader.payload_len);
-			payload_left = myheader.payload_len;// + 12;
-			flag = 1;
-		}
-		else if(flag == 1){
-			payload_left -= len;
-			if(payload_left <= 0){
-				// pr_info("flag reset to 0\n");
-				flag = 0;
-			}
-		}
-
-		if (copy_to_user(buf, (void *)&kbuf, 4)) {
-			ret = -EFAULT;
-		} else {
-			ret = len;
-			*off += 4;
-		}
-	}
-	// pr_info("READ\n");
-
-
-
-	return ret;
-}
-
-
-static ssize_t write(struct file *filp, const char __user *buf, size_t len, loff_t *off)
-{
-	ssize_t ret;
-	u32 kbuf;
-	pr_info("WRITE SIZE=%ld, OFF=%lld", len, *off);
-	ret = len;
-	if (!(*off % 4)) {
-		if (copy_from_user((void *)&kbuf, buf, 4) ) { // || len != 4) {
-			ret = -EFAULT;
-		} else {
-			iowrite32(kbuf, bufmmio + *off);			
-			*off += 4;
-		}
-	}
-	else{
-		pr_info("write off=%lld or size=%ld error, NOT ALIGNED 4!\n", *off, len);
-	}
-	pr_info("WRITE\n");
-	return ret;
-} 
 
 static ssize_t mywrite(struct bpf_injection_msg_t mymsg, int mmio_offset)
 {
@@ -197,8 +119,6 @@ static ssize_t mywrite(struct bpf_injection_msg_t mymsg, int mmio_offset)
 	return ret;
 }
 
-
-
 static void write_guest_free_pages(void)
 {
 	// GET GUEST FREE PAGES
@@ -211,13 +131,12 @@ static void write_guest_free_pages(void)
 	struct page* page;
 	unsigned long flags[2];
 	unsigned long phys_addr;
-	int i;	int ret = 0;
+	int i;
 	unsigned seq;
 	unsigned long spanned_pages, start_pfn, present_pages;
 	unsigned long managed_pages;
 	struct list_head* tmp;
 	int j;
-	enum migratetype migrate_type;
 	unsigned long free_area_pages;
 	struct zone* zones[2];
 	int k = 0;
@@ -326,60 +245,8 @@ static void write_guest_free_pages(void)
 		zones[k] = zone;
 		spin_unlock_irqrestore(&zones[k]->lock, flags[k]);
 	}
-	
-
-
-
 }
 
-
-static loff_t llseek(struct file *filp, loff_t off, int whence)
-{
-	loff_t newpos;
-
-  	switch(whence) {
-   		case 0: // SEEK_SET 
-		    newpos = off;
-		    break;
-
-   		case 1: // SEEK_CUR 
-		    newpos = filp->f_pos + off;
-		    break;
-
-   		default: // can't happen 
-    		return -EINVAL;
-  }
-  if (newpos<0){
-  	return -EINVAL;
-  }
-  filp->f_pos = newpos;
-  return newpos;
-} 
-
-
-static long newdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {   
-    switch (cmd) {
-        case IOCTL_PROGRAM_INJECTION_RESULT_READY:
-        	//bpf program result inserted in buffer area as bpf_injection_msg_t
-        	pr_info("response is ready!!! [dev]\n");
-        	iowrite32(1, bufmmio + NEWDEV_REG_DOORBELL);
-        	//signal to device 
-        	break;
-        case IOCTL_SCHED_SETAFFINITY:
-        {
-        	// Retrieve the requested cpu from userspace
-        	// Write in specific region in device to trigger the sched_setaffinity in host system
-        	int requested_cpu;
-        	if (copy_from_user(&requested_cpu, (int *)arg, sizeof(int))){
-            	return -EACCES;
-          	}
-          	pr_info("IOCTL requested_cpu: %d\n", requested_cpu);
-          	iowrite32(requested_cpu, bufmmio + NEWDEV_REG_SETAFFINITY);
-        	break;
-        }        	
-	}
-	return 0;
-}
 
 void setup_migration_phase_start(void)
 {
@@ -412,17 +279,6 @@ void setup_migration_phase_ended(void)
 	}
 }
 
-/* These fops are a bit daft since read and write interfaces don't map well to IO registers.
- * One ioctl per register would likely be the saner option. But we are lazy.
- * We use the fact that every IO is aligned to 4 bytes. Misaligned reads means EOF. */
-static struct file_operations fops = {
-	.owner   = THIS_MODULE,
-	.llseek  = llseek,
-	.read    = read,
-	.write   = write,
-	.unlocked_ioctl = newdev_ioctl,
-};
-
 static irqreturn_t irq_handler(int irq, void *dev){
 	int devi;
 	irqreturn_t ret;
@@ -446,13 +302,6 @@ static irqreturn_t irq_handler(int irq, void *dev){
 				wake_up_interruptible(&wq);
 				break;
 
-			case PROGRAM_INJECTION_AFFINITY:
-				pr_info("case PROGRAM_INJECTION_AFFINITY irq handler\n");
-				pr_info("waking up interruptible process...\n");
-				flag = 2;
-				wake_up_interruptible(&wq);
-				break;
-
 			case FIRST_ROUND_MIGRATION_ENDED:
 				pr_info("case FIRST_ROUND_MIGRATION_ENDED irq handler \n");
 				setup_migration_phase_ended();
@@ -470,7 +319,6 @@ static irqreturn_t irq_handler(int irq, void *dev){
 				flag = 1;
 				wake_up_interruptible(&wq);
 				break;
-
 		}
 
 		/* Must do this ACK, or else the interrupts just keeps firing. */
@@ -494,8 +342,6 @@ static int pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	u8 val;
 
 	pr_info("pci_probe\n");
-	major = register_chrdev(0, DEV_NAME, &fops);
-		pr_info("pci_probe: register_chrdev \n");
 
 	pdev = dev;
 	if (pci_enable_device(dev) < 0) {
@@ -550,9 +396,6 @@ static void pci_remove(struct pci_dev *pdev)
 	pci_free_irq_vectors(pdev);
 	pr_info("pci_remove: pci_free_irq_vectors OK \n");
 
-	unregister_chrdev(major, DEV_NAME);
-	pr_info("pci_remove: unregister_chrdev OK \n");
-
 	iounmap(bufmmio);
 	pr_info("pci_remove: iounmap OK\n");
 
@@ -591,10 +434,6 @@ void print_bpf_injection_message(struct bpf_injection_msg_header myheader){
 static int myinit(void)
 {	
 	
-	struct zone* zone;
-	struct pglist_data* pgdat;
-	
-
 	pr_info("Init Driver pr_info\n");
 	printk(KERN_INFO "Init Driver printk");
 
@@ -602,29 +441,7 @@ static int myinit(void)
 	if (pci_register_driver(&pci_driver) < 0) {
 		return 1;
 	}
-
 	
-	// write_guest_free_pages();
-
-	 for_each_zone(zone){
-		if(zone == NULL)
-			printk(KERN_INFO "NULL Pointer to zone");
-		else
-			printk(KERN_INFO "Zona id %s",zone->name);
-	}
-
-	printk(KERN_INFO "STAMPO PGDAT");
-	for_each_online_pgdat(pgdat){
-		if(pgdat == NULL)
-			printk(KERN_INFO "NULL Pointer to pgdat\n");
-		else
-		{
-			printk(KERN_INFO "PGDAT NOT NULL\n");
-			printk(KERN_INFO "Numero di zone in pgdat %d\n",pgdat->nr_zones);
-		}
-	} 
-	
-
 	return 0;
 
 }

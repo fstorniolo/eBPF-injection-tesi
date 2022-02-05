@@ -3,5 +3,5 @@
 set -ex
 
 # Teardown.
-sudo rm /dev/newdev
+#sudo rm /dev/newdev
 sudo rmmod driver
