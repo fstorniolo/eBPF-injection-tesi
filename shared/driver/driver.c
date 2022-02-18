@@ -45,7 +45,6 @@
 #include <asm/uaccess.h>
 #include <linux/file.h>
 #include <linux/socket.h>
-#include <linux/slab.h>
 
 #include <net/sock.h>
 #include <linux/netlink.h>
@@ -65,6 +64,8 @@
 #include <linux/spinlock.h>
 #include <linux/mm.h>
 #include <linux/atomic.h>
+#include <linux/slab.h>
+
 
 #define NEWDEV_REG_PCI_BAR      0
 #define NEWDEV_BUF_PCI_BAR      1
@@ -79,6 +80,8 @@
 #define NEWDEV_REG_SETAFFINITY	12
 #define NEWDEV_BUF 				16
 #define HEADER_OFFSET			4
+
+#define MIGRATION_BUFFER_SIZE 	65536
 
 MODULE_LICENSE("GPL");
 
@@ -140,7 +143,13 @@ static void write_guest_free_pages(void)
 	unsigned long free_area_pages;
 	struct zone* zones[2];
 	int k = 0;
-	
+	int count2 = 0;
+	unsigned long* migration_buffer;
+	u32 low_addr_r;
+	u32 high_addr_r;
+
+	migration_buffer = kmalloc(MIGRATION_BUFFER_SIZE * sizeof(u64), GFP_KERNEL);
+
 	for_each_populated_zone(zone){
 		printk(KERN_INFO "Populated Zone Name %s \n",zone->name);
 		zones[k] = zone;
@@ -220,13 +229,17 @@ static void write_guest_free_pages(void)
 					iowrite32(low_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
 					count++;
 					iowrite32(order,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-					count++;				
+					count++;
+
+					migration_buffer[count2] = phys_addr; 
+					count2++;
+					migration_buffer[count2] = order;
+					count2++;		
 				}
 			}
 			pr_info("read pages %lu of %lu \n", free_area_pages, free_area->nr_free);
 
 		}
-			// spin_unlock_irqrestore(&zone->lock, flags);
 			pr_info("\n");
 
 	}
@@ -234,6 +247,23 @@ static void write_guest_free_pages(void)
 	header.version = DEFAULT_VERSION;
 	header.type = FIRST_ROUND_MIGRATION;
 	header.payload_len = count * sizeof(u32);
+
+	high_addr = (virt_to_phys(migration_buffer) & 0xffffffff00000000) >> 32;
+	low_addr = (virt_to_phys(migration_buffer) & 0x00000000ffffffff);
+
+	pr_info("buffer gva address: %p \n",(void*) migration_buffer);
+	pr_info("buffer gpa address: %llx \n", virt_to_phys(migration_buffer));
+	pr_info("buffer gpa high address: %x", high_addr);
+	pr_info("buffer gpa low address: %x", low_addr);
+
+	iowrite32(high_addr, bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+	iowrite32(low_addr, bufmmio + NEWDEV_BUF + ((count + 1) * 4) + HEADER_OFFSET);
+
+	high_addr_r = ioread32(bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
+	low_addr_r = ioread32(bufmmio + NEWDEV_BUF + ((count + 1) * 4) + HEADER_OFFSET);
+
+	pr_info("buffer gpa high address read: %x", high_addr_r);
+	pr_info("buffer gpa low address read: %x", low_addr_r);
 
 	iowrite32(*(u32*)&header, bufmmio + NEWDEV_BUF);
 
@@ -245,6 +275,8 @@ static void write_guest_free_pages(void)
 		zones[k] = zone;
 		spin_unlock_irqrestore(&zones[k]->lock, flags[k]);
 	}
+
+	kfree(migration_buffer);
 }
 
 
@@ -381,6 +413,8 @@ static int pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	flag = 0;
 	pr_info("pci_probe COMPLETED SUCCESSFULLY\n");
 
+	// write_guest_free_pages();
+
 	return 0;
 error:
 	return 1;
@@ -433,14 +467,24 @@ void print_bpf_injection_message(struct bpf_injection_msg_header myheader){
 
 static int myinit(void)
 {	
-	
+	unsigned long *migration_buffer;
 	pr_info("Init Driver pr_info\n");
 	printk(KERN_INFO "Init Driver printk");
+
+
+	migration_buffer = kmalloc(MIGRATION_BUFFER_SIZE * sizeof(u64), GFP_KERNEL);
+
+	pr_info("buffer gva address as void* and p : %p \n",(void*) &migration_buffer[0]);
+	pr_info("buffer gva address: %p \n",(void*) migration_buffer);
+	pr_info("buffer gpa address: %llx \n", virt_to_phys(migration_buffer));
+
 
 
 	if (pci_register_driver(&pci_driver) < 0) {
 		return 1;
 	}
+
+	kfree(migration_buffer);
 	
 	return 0;
 
