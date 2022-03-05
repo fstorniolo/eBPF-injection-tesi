@@ -31,7 +31,9 @@
 /* Numbers for the helper calls used by bpfhv programs. */
 #define BPFHV_HELPER_MAGIC	0x4b8f0000
 enum bpfhv_helper_id {
-	BPFHV_FUNC_test_helper = BPFHV_HELPER_MAGIC
+	BPFHV_FUNC_test_helper = BPFHV_HELPER_MAGIC,
+    BPFHV_FUNC_get_memory_info_helper,
+    BPFHV_FUNC_set_maximum_page_order_helper
 };
 
 #ifndef BPFHV_FUNC
@@ -46,7 +48,9 @@ enum bpfhv_helper_id {
 enum {
 	BPFHV_PROG_NONE = 0,
 	BPFHV_PROG_TEST,
-	BPFHV_PROG_MAX,
+    BPFHV_PROG_GET_MEMORY_INFO,
+    BPFHV_PROG_SET_MAX_PAGE_ORDER,
+	BPFHV_PROG_MAX
 };
 
 

@@ -87,7 +87,7 @@
 #define NEWDEV_BUF 				16
 #define HEADER_OFFSET			4
 
-#define MIGRATION_BUFFER_SIZE 	65536
+#define MIGRATION_BUFFER_SIZE 	4 *1024*1024 /*4MiB*/
 
 MODULE_LICENSE("GPL");
 
@@ -103,10 +103,12 @@ static int major = 1111;
 static struct pci_dev *pdev;
 static void __iomem *bufmmio;
 static	u8* __iomem progmmio;
+unsigned long* migration_buffer;
+
 void* ctx;
 
 
-struct bpf_prog *bpf_injected_prog;
+struct bpf_prog *bpf_injected_prog = NULL;
 struct work_struct program_injection_work;
 
 static DECLARE_WAIT_QUEUE_HEAD(wq);		//wait queue static declaration
@@ -147,7 +149,6 @@ static void write_guest_free_pages(void)
 	struct page* page;
 	unsigned long flags[2];
 	unsigned long phys_addr;
-	int i;
 	unsigned seq;
 	unsigned long spanned_pages, start_pfn, present_pages;
 	unsigned long managed_pages;
@@ -156,12 +157,6 @@ static void write_guest_free_pages(void)
 	unsigned long free_area_pages;
 	struct zone* zones[2];
 	int k = 0;
-	int count2 = 0;
-	unsigned long* migration_buffer;
-	u32 low_addr_r;
-	u32 high_addr_r;
-
-	migration_buffer = kmalloc(MIGRATION_BUFFER_SIZE * sizeof(u64), GFP_KERNEL);
 
 	for_each_populated_zone(zone){
 		printk(KERN_INFO "Populated Zone Name %s \n",zone->name);
@@ -209,10 +204,10 @@ static void write_guest_free_pages(void)
 
 		// spin_lock_irqsave(&zone->lock, flags);
 		pr_info("Lock acquired \n");
-		for(i = 0; i < MAX_ORDER; i++){
+		for(order = 0; order < MAX_ORDER; order++){
 			// Get access to free page list with order i
-			free_area = &zone->free_area[i];
-			pr_info("free_area order %d has %lu free pages \n", i, free_area->nr_free);
+			free_area = &zone->free_area[order];
+			pr_info("free_area order %d has %lu free pages \n", order, free_area->nr_free);
 			free_area_pages = 0;
 
 			for(j = 0; j != MIGRATE_TYPES; j++){
@@ -229,37 +224,22 @@ static void write_guest_free_pages(void)
 					phys_addr = PFN_PHYS(page_to_pfn(page));
 					// pr_info("page_to_pfn: %lx PAGE_SHIFT: %d \n", page_to_pfn(page), PAGE_SHIFT);
 					// pr_info("Physical Address: %lx \n", phys_addr);
-	
-					high_addr = (phys_addr & 0xffffffff00000000) >> 32;
-					low_addr = (phys_addr & 0x00000000ffffffff);
-					order = i;
-					
-					// pr_info("high_addr: %x low_addr: %x order: %u", high_addr, low_addr, order);
-	
-					// bufmmio + BUF offset + new offset + address for the header 
-					iowrite32(high_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-					count++;
-					iowrite32(low_addr,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-					count++;
-					iowrite32(order,bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-					count++;
 
-					migration_buffer[count2] = phys_addr; 
-					count2++;
-					migration_buffer[count2] = order;
-					count2++;		
+					migration_buffer[count] = phys_addr; 
+					count++;
+					migration_buffer[count] = order;
+					count++;		
 				}
 			}
 			pr_info("read pages %lu of %lu \n", free_area_pages, free_area->nr_free);
 
 		}
 			pr_info("\n");
-
 	}
 
 	header.version = DEFAULT_VERSION;
 	header.type = FIRST_ROUND_MIGRATION;
-	header.payload_len = count * sizeof(u32);
+	header.payload_len = 3 * sizeof(u32);
 
 	high_addr = (virt_to_phys(migration_buffer) & 0xffffffff00000000) >> 32;
 	low_addr = (virt_to_phys(migration_buffer) & 0x00000000ffffffff);
@@ -269,16 +249,10 @@ static void write_guest_free_pages(void)
 	pr_info("buffer gpa high address: %x", high_addr);
 	pr_info("buffer gpa low address: %x", low_addr);
 
-	iowrite32(high_addr, bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-	iowrite32(low_addr, bufmmio + NEWDEV_BUF + ((count + 1) * 4) + HEADER_OFFSET);
-
-	high_addr_r = ioread32(bufmmio + NEWDEV_BUF + (count * 4) + HEADER_OFFSET);
-	low_addr_r = ioread32(bufmmio + NEWDEV_BUF + ((count + 1) * 4) + HEADER_OFFSET);
-
-	pr_info("buffer gpa high address read: %x", high_addr_r);
-	pr_info("buffer gpa low address read: %x", low_addr_r);
-
 	iowrite32(*(u32*)&header, bufmmio + NEWDEV_BUF);
+	iowrite32(high_addr, bufmmio + NEWDEV_BUF + HEADER_OFFSET);
+	iowrite32(low_addr, bufmmio + NEWDEV_BUF + 4 + HEADER_OFFSET);
+	iowrite32(count/2, bufmmio + NEWDEV_BUF + 8 + HEADER_OFFSET);
 
 	iowrite32(0,bufmmio + NEWDEV_REG_DOORBELL);
 
@@ -289,7 +263,6 @@ static void write_guest_free_pages(void)
 		spin_unlock_irqrestore(&zones[k]->lock, flags[k]);
 	}
 
-	kfree(migration_buffer);
 }
 
 
@@ -331,13 +304,31 @@ BPF_CALL_0(bpf_hv_test_helper)
 	return 0; /* Checksum already done or not needed. */
 }
 
+BPF_CALL_0(bpf_hv_memory_info_helper)
+{
+	pr_info("BPF MEMORY INFO HELPER PASSED \n");
+
+
+	return 0; /* Checksum already done or not needed. */
+}
+
+BPF_CALL_0(bpf_hv_set_maximum_page_order_helper)
+{
+	pr_info("BPF TEST PASSED \n");
+
+	return 0; /* Checksum already done or not needed. */
+}
+
 static const char *
 progname_from_idx(unsigned int prog_idx)
 {
 	switch (prog_idx) {
 	case BPFHV_PROG_TEST:
 		return "test";
-
+	case BPFHV_PROG_GET_MEMORY_INFO:
+		return "get_memory_info";
+	case BPFHV_PROG_SET_MAX_PAGE_ORDER:
+		return "set_max_page_order";
 	default:
 		break;
 	}
@@ -369,9 +360,15 @@ bpfhv_helper_calls_fixup(struct bpf_insn *insns,
 
 		switch (insns->imm) {
 		case BPFHV_FUNC_test_helper:
-			pr_info("HELPER FUNCTION TROVATA \n");
-			pr_info	("code: %x dst_reg: %x src_reg: %x off: %x imm: %x \n", insns->code, insns->dst_reg, insns->src_reg, insns->off, insns->imm);
+			// pr_info("HELPER FUNCTION FOUND \n");
+			// pr_info	("code: %x dst_reg: %x src_reg: %x off: %x imm: %x \n", insns->code, insns->dst_reg, insns->src_reg, insns->off, insns->imm);
 			func = bpf_hv_test_helper;
+			break;
+		case BPFHV_FUNC_get_memory_info_helper:
+			func = bpf_hv_memory_info_helper;
+			break;
+		case BPFHV_FUNC_set_maximum_page_order_helper:
+			func = bpf_hv_set_maximum_page_order_helper;
 			break;
 		default:
 			return -EINVAL;
@@ -459,18 +456,18 @@ bpf_programs_setup(void)
 	msg_header = (struct bpf_injection_msg_header*)&header;
 	program_size = msg_header->payload_len / 8;
 
+	// program size is expressed in number of instructions
 	pr_info("program size: %d \n", program_size);
-
-	
 	insns = kmalloc(program_size * sizeof(struct bpf_insn),
-			GFP_KERNEL);
+			GFP_ATOMIC);
 	if (!insns) {
 		pr_info("Error on insns \n");
 		return -ENOMEM;
 	}
 	
 	// Deallocate previous eBPF programs and the associated contexts. 
-	// bpfhv_programs_teardown(bi);
+	if(bpf_injected_prog == NULL)
+		bpf_prog_free(bpf_injected_prog);
 
 
 	jmax = (program_size * sizeof(struct bpf_insn)) / sizeof(*progp);
@@ -478,7 +475,7 @@ bpf_programs_setup(void)
 	for (j = 0; j < jmax; j++, progp++) {
 		*progp = readl(bufmmio + NEWDEV_BUF + HEADER_OFFSET +
 				j * sizeof(*progp));
-		pr_info("bpf_programs_setup instruction j: %d \n", *progp);
+		// pr_info("bpf_programs_setup instruction j: %d \n", *progp);
 	}
 
 	/* Fix the immediate field of call instructions to helper
@@ -546,18 +543,6 @@ static irqreturn_t irq_handler(int irq, void *dev)
 			case PROGRAM_INJECTION:
 				pr_info("case PROGRAM_INJECTION irq handler\n");
 				schedule_work(&program_injection_work);
-				/*
-				ret = bpf_programs_setup();
-				if (ret) {
-					pr_info("program setup failed \n");
-					return IRQ_NONE;
-				}
-				
-				pr_info("waking up interruptible process...\n");
-				flag = 2;
-				wake_up_interruptible(&wq);
-				*/
-
 
 				break;
 
@@ -642,9 +627,17 @@ static int pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	INIT_WORK(&program_injection_work, execute_work);
 
 	flag = 0;
+
+	migration_buffer = kmalloc(MIGRATION_BUFFER_SIZE, GFP_KERNEL);
+	if(migration_buffer == NULL){
+		pr_info("Error allocating migration_buffer \n");
+	} else {
+		pr_info("migration_buffer allocated SUCCESSFULLY \n");
+	}
 	pr_info("pci_probe COMPLETED SUCCESSFULLY\n");
 
 	ctx = kmalloc(4, GFP_KERNEL);
+
 
 
 	// write_guest_free_pages();
@@ -678,6 +671,8 @@ static void pci_remove(struct pci_dev *pdev)
 	pr_info("pci_remove: pci_release_selected_regions OK\n");
 
 	kfree(ctx);
+	kfree(migration_buffer);
+
 
 }
 
