@@ -85,10 +85,9 @@ int main (void){
   int sock;
   struct sockaddr_in servername;
   struct bpf_injection_msg_t mymsg;
-  struct cpu_affinity_infos_t myaffinityinfo;
   int len;
 
-  mymsg = prepare_bpf_injection_message("/home/giacomo/myvm/data/mytestprog.o");  
+  mymsg = prepare_bpf_injection_message("/home/filippo/Desktop/Tesi/eBPF-injection/shared/guest_programs/test_bpf_prog.o");  
   // print_bpf_injection_message(mymsg.header);
 
   /* Create the socket. */
@@ -106,28 +105,6 @@ int main (void){
       perror ("connect (client)");
       exit (EXIT_FAILURE);
   }
-  // printf("socket connected\n");
-
-
-  // -- Receive routine
-
-  // len = recv(sock, &(mymsg.header), sizeof(struct bpf_injection_msg_header), 0);
-  // if(len <= 0){
-  //     printf("len <0 error\n");
-  //     return 1;
-  // }
-  // print_bpf_injection_message(mymsg.header);   
-
-  // mymsg.payload = malloc(32);
-
-  // len = recv(sock, mymsg.payload, 32, 0);
-    
-  // printf("Payload:%s\n", (char*)mymsg.payload); 
-
-  // return 0;
-
-  // ------------------
-
 
   // Send eBPF message (program)
   send(sock, &(mymsg.header), sizeof(struct bpf_injection_msg_header), 0);

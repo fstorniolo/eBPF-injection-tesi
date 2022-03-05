@@ -25,6 +25,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include <libelf.h>
+#include <gelf.h>
+#include <fcntl.h>
+#include <string.h>
+
+
+
 //cut
 
 /*
@@ -39,15 +46,8 @@
 
 /* type defines */
 #define PROGRAM_INJECTION 						1
-#define PROGRAM_INJECTION_RESULT 					2
-#define PROGRAM_INJECTION_AFFINITY 					3
-#define PROGRAM_INJECTION_AFFINITY_RESULT				4
-#define SHUTDOWN_REQUEST						15
-#define ERROR								16
-#define RESET								17
-#define PIN_ON_SAME							18
-#define HT_REMAPPING							19
-#define FIRST_ROUND_MIGRATION				20
+#define PROGRAM_INJECTION_RESULT 				2
+#define FIRST_ROUND_MIGRATION					20
 /* version defines */
 #define DEFAULT_VERSION 						1
 
@@ -75,36 +75,111 @@ struct bpf_injection_msg_t {
 	void* payload;
 };
 
-struct cpu_affinity_infos_t {
-	uint16_t n_pCPU;
-	uint16_t n_vCPU;
-	//bool* pin;	//unnecessary in message
-};
-
-//cut
-
 struct bpf_injection_msg_t prepare_bpf_injection_message(const char* path){
 	struct bpf_injection_msg_t mymsg;
 	int len;
+	int fd;
 	mymsg.header.version = DEFAULT_VERSION;
 	mymsg.header.type = PROGRAM_INJECTION;
-	FILE* fp = fopen(path, "r");
-	if(fp) {
-		fseek(fp, 0 , SEEK_END);
-		mymsg.header.payload_len = ftell(fp);	  
-	  	fseek(fp, 0 , SEEK_SET);// needed for next read from beginning of file
-	  	mymsg.payload = malloc(mymsg.header.payload_len);
-	  	len = fread(mymsg.payload, 1, mymsg.header.payload_len, fp);
-	  	// printf("readlen %d\n", len);
-	  	if(len != mymsg.header.payload_len) {
-	  		printf("Error preparing the message\n");
-	  		mymsg.header.type = ERROR;
-	  		fclose(fp);
-	  		free(mymsg.payload);
-	  		return mymsg;
-	  	}
-	  fclose(fp);
-	}
+
+	const char *prog_names[1] = {"test"};
+    GElf_Ehdr ehdr;
+    int ret = -1;
+    Elf *elf;
+    int i;
+
+	fd = open(path, O_RDONLY, 0);
+	if (fd < 0) {
+        printf("Failed to open %s \n", path);
+
+        // error_setg_errno(errp, errno, "Failed to open %s", path);
+    }
+
+    printf("path: %s aperto \n", path);
+
+    if (elf_version(EV_CURRENT) == EV_NONE) {
+        printf("ELF version mismatch \n");
+        // return -1;
+    }
+    elf = elf_begin(fd, ELF_C_READ, NULL);
+    if (!elf) {
+        printf("Failed to initialize ELF library for %s", path);
+        // return -1;
+    }
+
+    if (gelf_getehdr(elf, &ehdr) != &ehdr) {
+        printf("Failed to get ELF header for %s", path);
+        goto err;
+    }
+
+    for (i = 1; i < ehdr.e_shnum; i++) {
+        Elf_Data *sdata;
+        GElf_Shdr shdr;
+        Elf_Scn *scn;
+        char *shname;
+
+        scn = elf_getscn(elf, i);
+        if (!scn) {
+            continue;
+        }
+
+        if (gelf_getshdr(scn, &shdr) != &shdr) {
+            continue;
+        }
+
+        if (shdr.sh_type != SHT_PROGBITS) {
+            continue;
+        }
+
+        shname = elf_strptr(elf, ehdr.e_shstrndx, shdr.sh_name);
+        if (!shname || shdr.sh_size == 0) {
+            continue;
+        }
+
+        sdata = elf_getdata(scn, NULL);
+        if (!sdata || elf_getdata(scn, sdata) != NULL) {
+            continue;
+        }
+
+        {
+            int j;
+
+            for (j = 0; j < /*ARRAY_SIZE(prog_names)*/ 1; j++) {
+                if (!strcmp(shname, prog_names[j])) {
+                    break;
+                }
+            }
+
+            if (j >= /*ARRAY_SIZE(prog_names)*/ 1) {
+                continue;
+            }
+
+            /*
+            if (s->prog->insns != NULL) {
+                DBG("warning: %s contains more sections with name %s",
+                    path, prog_names[j]);
+                continue;
+            }
+			*/
+			mymsg.header.payload_len = sdata->d_size;	
+			mymsg.payload = malloc(mymsg.header.payload_len);
+
+			printf("Payload_len: %ld \n", sdata->d_size);
+  
+
+            // s->prog->insns = g_malloc(sdata->d_size);
+            memcpy(mymsg.payload, sdata->d_buf, sdata->d_size);
+            //s->prog->num_insns = sdata->d_size / BPF_INSN_SIZE; BPF_INSN_SIZE == 8
+            printf("numinsns equivalent: %ld \n", sdata->d_size / 8);
+        }
+    }
+
+    ret = 0;
+    // pstrcpy(s->progsname, sizeof(s->progsname), progsname);
+    // DBG("Loaded program: %s", s->progsname);
+err:
+    elf_end(elf);
+
   	return mymsg;
 }
 
