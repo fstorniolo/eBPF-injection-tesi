@@ -144,10 +144,10 @@ static void write_guest_free_pages(void)
 	u32 high_addr, low_addr, order;
 	struct bpf_injection_msg_header header;
 	struct zone* zone;
-	// struct pglist_data* pgdat;
+	struct pglist_data* pgdat;
 	struct free_area* free_area;
 	struct page* page;
-	unsigned long flags[2];
+	unsigned long *flags;
 	unsigned long phys_addr;
 	unsigned seq;
 	unsigned long spanned_pages, start_pfn, present_pages;
@@ -155,32 +155,37 @@ static void write_guest_free_pages(void)
 	struct list_head* tmp;
 	int j;
 	unsigned long free_area_pages;
-	struct zone* zones[2];
+	struct zone **zones;
 	int k = 0;
+	int nr_populated_zones;
 
-	for_each_populated_zone(zone){
-		printk(KERN_INFO "Populated Zone Name %s \n",zone->name);
-		zones[k] = zone;
-		k++;
+	for_each_online_pgdat(pgdat){
+		nr_populated_zones = pgdat->nr_zones;
+		pr_info("PGDAT, number of zones: %d \n", pgdat->nr_zones);
 	}
 
-	k = 0;
+	flags = kmalloc(nr_populated_zones * sizeof(unsigned long), GFP_ATOMIC);
+	zones = kmalloc(nr_populated_zones * sizeof(struct zone*), GFP_ATOMIC);
+
+	pr_info("size of zone: %ld", sizeof(struct zone));
+	pr_info("size of zone*: %ld", sizeof(struct zone*));
 
 	for_each_populated_zone(zone){
-		printk(KERN_INFO "Populated Zone Name %s \n",zone->name);
 		zones[k] = zone;
+		//pr_info("flags + %d address %p \n", k, flags[k]);
+		// pr_info("zones + %d address %p \n", k, zones[k]);
+
+		printk(KERN_INFO "Populated Zone Name, locking lock: %s \n",zones[k]->name);
 		spin_lock_irqsave(&zones[k]->lock, flags[k]);
 		k++;
 	}
-	 
 
-
-	for_each_zone(zone){
+	// #if 0
+	for_each_populated_zone(zone){
 		if(zone == NULL){
 			printk(KERN_INFO "NULL Pointer to zone");
 			continue;
-		}
-
+	}
 
 
 		printk(KERN_INFO "Zone Name %s \n",zone->name);
@@ -256,12 +261,19 @@ static void write_guest_free_pages(void)
 
 	iowrite32(0,bufmmio + NEWDEV_REG_DOORBELL);
 
+	// #endif
+
 	for_each_populated_zone(zone){
-		printk(KERN_INFO "Populated Zone Name %s \n",zone->name);
 		k--;
-		zones[k] = zone;
+		printk(KERN_INFO "Populated Zone Name, release lock: %s \n",zones[k]->name);
+		// zones[k] = zone;
 		spin_unlock_irqrestore(&zones[k]->lock, flags[k]);
+
 	}
+
+	kfree(flags);
+	kfree(zones);
+
 
 }
 
@@ -584,6 +596,7 @@ static irqreturn_t irq_handler(int irq, void *dev)
 static int pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
 	u8 val;
+	struct zone* zone;
 
 	pr_info("pci_probe\n");
 
@@ -637,6 +650,15 @@ static int pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	pr_info("pci_probe COMPLETED SUCCESSFULLY\n");
 
 	ctx = kmalloc(4, GFP_KERNEL);
+
+
+	for_each_populated_zone(zone){
+		printk(KERN_INFO "Populated Zone Name %s \n",zone->name);
+	}
+
+	for_each_zone(zone){
+		printk(KERN_INFO "All Zone Name %s \n",zone->name);
+	}
 
 
 
