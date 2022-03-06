@@ -87,7 +87,7 @@ int main (void){
   struct bpf_injection_msg_t mymsg;
   int len;
 
-  mymsg = prepare_bpf_injection_message("/home/filippo/Desktop/Tesi/eBPF-injection/shared/guest_programs/test_bpf_prog.o", "test", PROGRAM_INJECTION);  
+  mymsg = prepare_bpf_injection_message("/home/filippo/Desktop/Tesi/eBPF-injection/shared/guest_programs/memory_info_bpf_prog.o", "get_memory_info", PROGRAM_MEMORY_INFO);  
   // print_bpf_injection_message(mymsg.header);
   // return 0;
 

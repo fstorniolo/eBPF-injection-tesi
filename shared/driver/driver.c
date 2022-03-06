@@ -104,6 +104,7 @@ static struct pci_dev *pdev;
 static void __iomem *bufmmio;
 static	u8* __iomem progmmio;
 unsigned long* migration_buffer;
+uint8_t program_type;
 
 void* ctx;
 
@@ -326,7 +327,7 @@ BPF_CALL_0(bpf_hv_memory_info_helper)
 
 BPF_CALL_0(bpf_hv_set_maximum_page_order_helper)
 {
-	pr_info("BPF TEST PASSED \n");
+	pr_info("BPF SET MAXIMUM PAGE ORDER PASSED \n");
 
 	return 0; /* Checksum already done or not needed. */
 }
@@ -339,7 +340,7 @@ progname_from_idx(unsigned int prog_idx)
 		return "test";
 	case BPFHV_PROG_GET_MEMORY_INFO:
 		return "get_memory_info";
-	case BPFHV_PROG_SET_MAX_PAGE_ORDER:
+	case BPFHV_PROG_SET_MAXIMUM_PAGE_ORDER:
 		return "set_max_page_order";
 	default:
 		break;
@@ -380,6 +381,7 @@ bpfhv_helper_calls_fixup(struct bpf_insn *insns,
 			func = bpf_hv_memory_info_helper;
 			break;
 		case BPFHV_FUNC_set_maximum_page_order_helper:
+			pr_info("Maximum page order helper found \n");
 			func = bpf_hv_set_maximum_page_order_helper;
 			break;
 		default:
@@ -452,7 +454,7 @@ bpf_my_prog_alloc(const char *progname,
 }
 
 static int
-bpf_programs_setup(void)
+bpf_programs_setup(uint32_t program_id)
 {
 	struct bpf_insn *insns;
 	int ret = -EIO;
@@ -478,7 +480,7 @@ bpf_programs_setup(void)
 	}
 	
 	// Deallocate previous eBPF programs and the associated contexts. 
-	if(bpf_injected_prog == NULL)
+	if(bpf_injected_prog != NULL)
 		bpf_prog_free(bpf_injected_prog);
 
 
@@ -502,10 +504,10 @@ bpf_programs_setup(void)
 
 	// Allocate an eBPF program for 'insns'. 
 
-	pr_info("progname_from_idx: %s \n", progname_from_idx(BPFHV_PROG_TEST));
+	pr_info("progname_from_idx: %s \n", progname_from_idx(program_id));
 
 	
-	bpf_injected_prog = bpf_my_prog_alloc(progname_from_idx(BPFHV_PROG_TEST),
+	bpf_injected_prog = bpf_my_prog_alloc(progname_from_idx(program_id),
 					insns, program_size);
 	if (bpf_injected_prog == NULL) {
 		pr_info("Error in bpfhv_prog_alloc \n");
@@ -520,13 +522,31 @@ out:
 	return ret;
 }
 
+static uint32_t 
+get_prog_type_from_irq(void)
+{
+	switch(program_type){
+		case PROGRAM_INJECTION:
+			return BPFHV_PROG_TEST;
+
+		case PROGRAM_MEMORY_INFO:
+			return BPFHV_PROG_GET_MEMORY_INFO;
+
+		case PROGRAM_SET_MAXIMUM_ORDER:
+			return BPFHV_PROG_SET_MAXIMUM_PAGE_ORDER;
+
+		default:
+			return BPFHV_PROG_NONE;
+	}
+}
+
 static void execute_work(struct work_struct *w)
 {
 	int ret;
 
 	pr_info("execute_work \n");
-	
-	ret = bpf_programs_setup();
+
+	ret = bpf_programs_setup(get_prog_type_from_irq());
 	if (ret) {
 		pr_info("program setup failed \n");
 	}
@@ -554,6 +574,20 @@ static irqreturn_t irq_handler(int irq, void *dev)
 
 			case PROGRAM_INJECTION:
 				pr_info("case PROGRAM_INJECTION irq handler\n");
+				program_type = PROGRAM_INJECTION;
+				schedule_work(&program_injection_work);
+
+				break;
+
+			case PROGRAM_MEMORY_INFO:
+				pr_info("case PROGRAM_MEMORY_INFO irq handler\n");
+				program_type = PROGRAM_MEMORY_INFO;
+				schedule_work(&program_injection_work);
+
+				break;
+			case PROGRAM_SET_MAXIMUM_ORDER:
+				pr_info("case PROGRAM_SET_MAXIMUM_ORDER irq handler\n");
+				program_type = PROGRAM_SET_MAXIMUM_ORDER;
 				schedule_work(&program_injection_work);
 
 				break;
@@ -640,6 +674,8 @@ static int pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	INIT_WORK(&program_injection_work, execute_work);
 
 	flag = 0;
+
+	program_type = 0;
 
 	migration_buffer = kmalloc(MIGRATION_BUFFER_SIZE, GFP_KERNEL);
 	if(migration_buffer == NULL){

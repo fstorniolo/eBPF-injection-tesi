@@ -47,6 +47,8 @@
 /* type defines */
 #define PROGRAM_INJECTION 						1
 #define PROGRAM_INJECTION_RESULT 				2
+#define PROGRAM_MEMORY_INFO 					3
+#define PROGRAM_SET_MAXIMUM_ORDER				4
 #define FIRST_ROUND_MIGRATION					20
 /* version defines */
 #define DEFAULT_VERSION 						1
@@ -61,7 +63,7 @@
 
 struct bpf_injection_msg_header;
 struct bpf_injection_msg_t;
-struct bpf_injection_msg_t prepare_bpf_injection_message(const char* path);	
+struct bpf_injection_msg_t prepare_bpf_injection_message(const char* path, const char* section_name, uint8_t header_type);
 void print_bpf_injection_message(struct bpf_injection_msg_header myheader);
 
 struct bpf_injection_msg_header {
@@ -75,14 +77,18 @@ struct bpf_injection_msg_t {
 	void* payload;
 };
 
-struct bpf_injection_msg_t prepare_bpf_injection_message(const char* path){
+struct bpf_injection_msg_t prepare_bpf_injection_message(const char* path, const char* section_name, uint8_t header_type){
 	struct bpf_injection_msg_t mymsg;
 	int len;
 	int fd;
 	mymsg.header.version = DEFAULT_VERSION;
-	mymsg.header.type = PROGRAM_INJECTION;
-
+	mymsg.header.type = header_type;
+	#if 0
 	const char *prog_names[1] = {"test"};
+	printf("prima di assegnamento \n");
+	// prog_names[1] = new section_name;
+	printf("dopo assegnamento \n");
+	#endif
     GElf_Ehdr ehdr;
     int ret = -1;
     Elf *elf;
@@ -142,25 +148,26 @@ struct bpf_injection_msg_t prepare_bpf_injection_message(const char* path){
         }
 
         {
+        	#if 0
             int j;
-
+            printf("prima di strcmp \n");
             for (j = 0; j < /*ARRAY_SIZE(prog_names)*/ 1; j++) {
                 if (!strcmp(shname, prog_names[j])) {
                     break;
                 }
             }
+            printf("dopo di strcmp \n");
 
             if (j >= /*ARRAY_SIZE(prog_names)*/ 1) {
                 continue;
             }
+            #endif
+            
+        	if(!strcmp(shname, section_name)){
+        		printf("shname e section_name are equal \n");
+        		printf("shname: %s section_name: %s \n", shname, section_name);
+        	}
 
-            /*
-            if (s->prog->insns != NULL) {
-                DBG("warning: %s contains more sections with name %s",
-                    path, prog_names[j]);
-                continue;
-            }
-			*/
 			mymsg.header.payload_len = sdata->d_size;	
 			mymsg.payload = malloc(mymsg.header.payload_len);
 

@@ -12,13 +12,8 @@
 /* type defines */
 #define PROGRAM_INJECTION 							1
 #define PROGRAM_INJECTION_RESULT 					2
-#define PROGRAM_INJECTION_AFFINITY 					3
-#define PROGRAM_INJECTION_AFFINITY_RESULT			4
-#define SHUTDOWN_REQUEST							15
-#define ERROR										16
-#define RESET										17
-#define PIN_ON_SAME									18
-#define HT_REMAPPING								19
+#define PROGRAM_MEMORY_INFO 						3
+#define PROGRAM_SET_MAXIMUM_ORDER					4
 #define FIRST_ROUND_MIGRATION						20
 #define FIRST_ROUND_MIGRATION_ENDED                 21
 #define FIRST_ROUND_MIGRATION_START                 5

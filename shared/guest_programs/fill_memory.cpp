@@ -7,7 +7,7 @@
 int main(){
 
 	printf("Fill Memory \n");
-	unsigned int size = 1024 * 1024 * 1024;
+	unsigned long size = 6 * 1024ul * 1024ul * 1024ul;
 	// size += size / 2;
 	char* fill;
 	// allocate 1GB of memory
@@ -16,7 +16,7 @@ int main(){
 	printf("array created \n");
 
 	// write in memory
-	for(int i = 0; i < size; i++)
+	for(long i = 0; i < size; i++)
 		fill[i] = ('a' + i);
 	system("read -p 'Press Enter to continue...' var");
 	return 0;
