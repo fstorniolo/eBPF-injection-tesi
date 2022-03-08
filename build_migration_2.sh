@@ -13,14 +13,14 @@ iso="${id}.iso"
 /home/filippo/Desktop/Tesi/qemu/build/x86_64-softmmu/qemu-system-x86_64 \
   -drive "file=${disk_img},format=qcow2" \
   -enable-kvm \
-  -m 2G \
+  -m 8G \
   -smp 2 \
   -device virtio-net-pci,netdev=ssh \
-  -netdev user,id=ssh,hostfwd=tcp::2223-:22 \
+  -netdev user,id=ssh,hostfwd=tcp::2222-:22 \
   -fsdev local,id=test_dev,path=shared,security_model=none \
   -device virtio-9p-pci,fsdev=test_dev,mount_tag=shared \
   -device newdev \
-  -incoming tcp:0:4444 \
+  -incoming tcp:0:5555 \
   -serial stdio \
   "$@" \
 ;

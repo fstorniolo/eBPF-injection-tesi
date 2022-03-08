@@ -609,9 +609,13 @@ static irqreturn_t irq_handler(int irq, void *dev)
 				flag = 1;
 				wake_up_interruptible(&wq);
 				break;
+			default:
+				pr_info("no irq type \n");
+				break;
 		}
 
-		/* Must do this ACK, or else the interrupts just keeps firing. */
+		/* Must do this ACK, otherwise the interrupts just keeps firing. */
+		pr_info("irq_status before iowrite32 for stopping interrupts \n");
 		iowrite32(irq_status, bufmmio + NEWDEV_REG_LOWER_IRQ);
 		ret = IRQ_HANDLED;
 	} else {
