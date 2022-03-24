@@ -21,6 +21,8 @@ iso="${id}.iso"
   -device virtio-9p-pci,fsdev=test_dev,mount_tag=shared \
   -device newdev \
   -incoming tcp:0:5555 \
+  -monitor tcp:localhost:5324,server,nowait,nodelay \
+
   -serial stdio \
   "$@" \
 ;

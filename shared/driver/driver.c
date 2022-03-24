@@ -87,7 +87,7 @@
 #define NEWDEV_BUF 				16
 #define HEADER_OFFSET			4
 
-#define MIGRATION_BUFFER_SIZE 	4 *1024*1024 /*4MiB*/
+#define MIGRATION_BUFFER_SIZE 	1 *1024*1024 /*4MiB*/
 
 MODULE_LICENSE("GPL");
 
@@ -168,8 +168,6 @@ static void write_guest_free_pages(void)
 	flags = kmalloc(nr_populated_zones * sizeof(unsigned long), GFP_ATOMIC);
 	zones = kmalloc(nr_populated_zones * sizeof(struct zone*), GFP_ATOMIC);
 
-	pr_info("size of zone: %ld", sizeof(struct zone));
-	pr_info("size of zone*: %ld", sizeof(struct zone*));
 
 	for_each_populated_zone(zone){
 		zones[k] = zone;
@@ -209,11 +207,11 @@ static void write_guest_free_pages(void)
 		}
 
 		// spin_lock_irqsave(&zone->lock, flags);
-		pr_info("Lock acquired \n");
+		// pr_info("Lock acquired \n");
 		for(order = 0; order < MAX_ORDER; order++){
 			// Get access to free page list with order i
 			free_area = &zone->free_area[order];
-			pr_info("free_area order %d has %lu free pages \n", order, free_area->nr_free);
+			// pr_info("free_area order %d has %lu free pages \n", order, free_area->nr_free);
 			free_area_pages = 0;
 
 			for(j = 0; j != MIGRATE_TYPES; j++){
@@ -237,7 +235,7 @@ static void write_guest_free_pages(void)
 					count++;		
 				}
 			}
-			pr_info("read pages %lu of %lu \n", free_area_pages, free_area->nr_free);
+			// pr_info("read pages %lu of %lu \n", free_area_pages, free_area->nr_free);
 
 		}
 			pr_info("\n");
@@ -250,10 +248,14 @@ static void write_guest_free_pages(void)
 	high_addr = (virt_to_phys(migration_buffer) & 0xffffffff00000000) >> 32;
 	low_addr = (virt_to_phys(migration_buffer) & 0x00000000ffffffff);
 
+	/*
+
 	pr_info("buffer gva address: %p \n",(void*) migration_buffer);
 	pr_info("buffer gpa address: %llx \n", virt_to_phys(migration_buffer));
 	pr_info("buffer gpa high address: %x", high_addr);
 	pr_info("buffer gpa low address: %x", low_addr);
+
+	*/
 
 	iowrite32(*(u32*)&header, bufmmio + NEWDEV_BUF);
 	iowrite32(high_addr, bufmmio + NEWDEV_BUF + HEADER_OFFSET);
@@ -293,6 +295,7 @@ void setup_migration_phase_ended(void)
 	unsigned seq;
 
 	pr_info("setup_migration_phase_ended FUNCTION \n");
+	/*
 
 	for_each_populated_zone(zone){
 		printk(KERN_INFO "Zone Name %s \n",zone->name);
@@ -308,6 +311,7 @@ void setup_migration_phase_ended(void)
 
 		pr_info("start_pfn: %lu spanned_pages: %lu present_pages: %lu managed_pages: %lu \n", start_pfn, spanned_pages, present_pages, managed_pages);
 	}
+	*/
 }
 
 BPF_CALL_0(bpf_hv_test_helper)
@@ -566,9 +570,8 @@ static irqreturn_t irq_handler(int irq, void *dev)
 		irq_status = ioread32(bufmmio + NEWDEV_REG_STATUS_IRQ);
 
 		//handle
-		pr_info("interrupt irq = %d dev = %d irq_status = 0x%llx\n",
-				irq, devi, (unsigned long long)irq_status);
-		pr_info("me handling like a god?\n");
+		// pr_info("interrupt irq = %d dev = %d irq_status = 0x%llx\n", irq, devi, (unsigned long long)irq_status);
+		// pr_info("me handling like a god?\n");
 
 		switch(irq_status){
 
@@ -610,12 +613,12 @@ static irqreturn_t irq_handler(int irq, void *dev)
 				wake_up_interruptible(&wq);
 				break;
 			default:
-				pr_info("no irq type \n");
+				// pr_info("no irq type \n");
 				break;
 		}
 
 		/* Must do this ACK, otherwise the interrupts just keeps firing. */
-		pr_info("irq_status before iowrite32 for stopping interrupts \n");
+		// pr_info("irq_status before iowrite32 for stopping interrupts \n");
 		iowrite32(irq_status, bufmmio + NEWDEV_REG_LOWER_IRQ);
 		ret = IRQ_HANDLED;
 	} else {
@@ -631,12 +634,24 @@ static irqreturn_t irq_handler(int irq, void *dev)
  * 0: all good
  * 1: failed
  */
+
+static struct file_operations fops = {
+	.owner   = THIS_MODULE,
+	.llseek  = NULL,
+	.read    = NULL,
+	.write   = NULL,
+	.unlocked_ioctl = NULL,
+};
+
 static int pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
 	u8 val;
 	struct zone* zone;
 
 	pr_info("pci_probe\n");
+
+	major = register_chrdev(0, DEV_NAME, &fops);
+	pr_info("major is %d \n", major);
 
 	pdev = dev;
 	if (pci_enable_device(dev) < 0) {
@@ -660,14 +675,14 @@ static int pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	bufmmio = pci_iomap(pdev, NEWDEV_BUF_PCI_BAR, pci_resource_len(pdev, NEWDEV_BUF_PCI_BAR));
 	pr_info("pci_probe: pci_iomap bufmmio \n");
 
-	progmmio = pci_iomap(pdev, NEWDEV_PROG_PCI_BAR, pci_resource_len(pdev, NEWDEV_PROG_PCI_BAR));
-	pr_info("pci_probe: pci_iomap progmmio \n");
+	/*progmmio = pci_iomap(pdev, NEWDEV_PROG_PCI_BAR, pci_resource_len(pdev, NEWDEV_PROG_PCI_BAR));
+	pr_info("pci_probe: pci_iomap progmmio \n");*/
 
 	/* IRQ setup. */
-	pci_read_config_byte(dev, PCI_INTERRUPT_LINE, &val);
-	pr_info("pci_probe: pci_read_config_byte \n");
+	//pci_read_config_byte(dev, PCI_INTERRUPT_LINE, &val);
+	//pr_info("pci_probe: pci_read_config_byte \n");
 
-	pci_irq = val;
+	pci_irq = dev->irq;
 	if (request_irq(pci_irq, irq_handler, IRQF_SHARED, "pci_irq_handler0", &major) < 0) {
 		pr_info("pci_probe: error in request_irq, irq: %d \n", pci_irq);
 		dev_err(&(dev->dev), "request_irq\n");
@@ -722,8 +737,8 @@ static void pci_remove(struct pci_dev *pdev)
 	iounmap(bufmmio);
 	pr_info("pci_remove: iounmap bufmmio OK\n");
 
-	iounmap(progmmio);
-	pr_info("pci_remove: iounmap progmmio OK\n");
+	/*iounmap(progmmio);
+	pr_info("pci_remove: iounmap progmmio OK\n");*/
 
 
 	pci_disable_device(pdev);
@@ -731,6 +746,9 @@ static void pci_remove(struct pci_dev *pdev)
 
 	pci_release_region(pdev, NEWDEV_BUF_PCI_BAR);
 	pr_info("pci_remove: pci_release_selected_regions OK\n");
+
+	unregister_chrdev(major, DEV_NAME);
+
 
 	kfree(ctx);
 	kfree(migration_buffer);

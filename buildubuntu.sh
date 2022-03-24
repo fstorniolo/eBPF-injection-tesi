@@ -48,6 +48,7 @@ fi
   -fsdev local,id=test_dev,path=shared,security_model=none \
   -device virtio-9p-pci,fsdev=test_dev,mount_tag=shared \
   -device newdev \
+  -monitor tcp:localhost:5324,server,nowait,nodelay \
   -serial stdio \
   "$@" \
 ;
