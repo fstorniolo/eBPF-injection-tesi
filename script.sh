@@ -1,5 +1,6 @@
 #!/bin/bash
 
+i=0
 gnome-terminal -- sh -c './buildubuntu.sh'
 sleep 60
 ssh root@localhost -p 2222 'cd /home/filippo ; 
@@ -16,9 +17,13 @@ gnome-terminal -- sh -c './build_migration_1.sh'
 sleep 1
 gnome-terminal -- sh -c 'timeout 20 ./migration.sh'
 sleep 25
-gnome-terminal -- sh -c 'timeout 3 nc localhost 5324 > result.txt <<END
+#gnome-terminal -- sh -c 'timeout 3 nc localhost 5324 > result.txt <<END
+#info migrate
+#END'
+timeout 3 nc localhost 5324 > result_$i.txt <<END
 info migrate
-END'
+END
+
 sleep 2
 gnome-terminal -- sh -c 'timeout 3 nc localhost 5324 <<END
 q
