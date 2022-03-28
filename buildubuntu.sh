@@ -20,8 +20,8 @@ if [ ! -f "$disk_img" ]; then
     -cdrom "$iso" \
     -drive "file=${disk_img},format=qcow2" \
     -enable-kvm \
-    -m 8G \
-    -smp 2 \
+    -m 16G \
+    -smp 4 \
   ;
 fi
 
@@ -41,8 +41,8 @@ fi
 /home/filippo/Desktop/Tesi/qemu/build/x86_64-softmmu/qemu-system-x86_64 \
   -drive "file="${disk_img}",format=qcow2" \
   -enable-kvm \
-  -m 8G \
-  -smp 2 \
+  -m 16G \
+  -smp 4 \
   -device virtio-net-pci,netdev=ssh \
   -netdev user,id=ssh,hostfwd=tcp::2222-:22 \
   -fsdev local,id=test_dev,path=shared,security_model=none \

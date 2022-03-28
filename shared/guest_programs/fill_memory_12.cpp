@@ -7,10 +7,10 @@
 int main(){
 
 	printf("Fill Memory \n");
-	unsigned long size = 6 * 1024ul * 1024ul * 1024ul;
+	unsigned long size = 12 * 1024ul * 1024ul * 1024ul;
 	// size += size / 2;
 	char* fill;
-	// allocate 1GB of memory
+	// allocate 12GB of memory
 	mlock(fill, size);
 	fill = new char[size];
 	printf("array created \n");

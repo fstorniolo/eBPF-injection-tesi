@@ -69,6 +69,7 @@
 
 #include <linux/types.h>
 #include <linux/moduleparam.h>
+#include <linux/time.h>
 
 
 #define NEWDEV_REG_PCI_BAR      0
@@ -87,7 +88,7 @@
 #define NEWDEV_BUF 				16
 #define HEADER_OFFSET			4
 
-#define MIGRATION_BUFFER_SIZE 	1 *1024*1024 /*4MiB*/
+#define MIGRATION_BUFFER_SIZE 	4*1024*1024 /*4MiB*/
 
 MODULE_LICENSE("GPL");
 
@@ -159,6 +160,8 @@ static void write_guest_free_pages(void)
 	struct zone **zones;
 	int k = 0;
 	int nr_populated_zones;
+	ktime_t starting_time;
+	ktime_t ending_time;
 
 	for_each_online_pgdat(pgdat){
 		nr_populated_zones = pgdat->nr_zones;
@@ -169,6 +172,7 @@ static void write_guest_free_pages(void)
 	zones = kmalloc(nr_populated_zones * sizeof(struct zone*), GFP_ATOMIC);
 
 
+	starting_time = ktime_get();
 	for_each_populated_zone(zone){
 		zones[k] = zone;
 		//pr_info("flags + %d address %p \n", k, flags[k]);
@@ -257,12 +261,15 @@ static void write_guest_free_pages(void)
 
 	*/
 
+	ending_time = ktime_get();
+	pr_info("algorithm time: %llu \n", (ending_time - starting_time));
+
 	iowrite32(*(u32*)&header, bufmmio + NEWDEV_BUF);
 	iowrite32(high_addr, bufmmio + NEWDEV_BUF + HEADER_OFFSET);
 	iowrite32(low_addr, bufmmio + NEWDEV_BUF + 4 + HEADER_OFFSET);
 	iowrite32(count/2, bufmmio + NEWDEV_BUF + 8 + HEADER_OFFSET);
 
-	iowrite32(0,bufmmio + NEWDEV_REG_DOORBELL);
+	iowrite32((ending_time - starting_time),bufmmio + NEWDEV_REG_DOORBELL);
 
 	// #endif
 
@@ -276,7 +283,6 @@ static void write_guest_free_pages(void)
 
 	kfree(flags);
 	kfree(zones);
-
 
 }
 
@@ -295,45 +301,27 @@ void setup_migration_phase_ended(void)
 	unsigned seq;
 
 	pr_info("setup_migration_phase_ended FUNCTION \n");
-	/*
-
-	for_each_populated_zone(zone){
-		printk(KERN_INFO "Zone Name %s \n",zone->name);
-		do {
-			seq = zone_span_seqbegin(zone);
-			start_pfn = zone->zone_start_pfn;
-			spanned_pages = zone->spanned_pages;
-
-		} while (zone_span_seqretry(zone, seq));
-
-		present_pages = zone->present_pages;
-		managed_pages = atomic_long_read(&zone->managed_pages);
-
-		pr_info("start_pfn: %lu spanned_pages: %lu present_pages: %lu managed_pages: %lu \n", start_pfn, spanned_pages, present_pages, managed_pages);
-	}
-	*/
 }
 
 BPF_CALL_0(bpf_hv_test_helper)
 {
 	pr_info("BPF TEST PASSED \n");
 
-	return 0; /* Checksum already done or not needed. */
+	return 0;
 }
 
 BPF_CALL_0(bpf_hv_memory_info_helper)
 {
 	pr_info("BPF MEMORY INFO HELPER PASSED \n");
 
-
-	return 0; /* Checksum already done or not needed. */
+	return 0;
 }
 
 BPF_CALL_0(bpf_hv_set_maximum_page_order_helper)
 {
 	pr_info("BPF SET MAXIMUM PAGE ORDER PASSED \n");
 
-	return 0; /* Checksum already done or not needed. */
+	return 0;
 }
 
 static const char *
@@ -647,6 +635,9 @@ static int pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
 	u8 val;
 	struct zone* zone;
+	// struct timespec *starting_time;
+	// struct timespec *ending_time;
+	ktime_t starting_time;
 
 	pr_info("pci_probe\n");
 
@@ -715,9 +706,12 @@ static int pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		printk(KERN_INFO "All Zone Name %s \n",zone->name);
 	}
 
+	// getnstimeofday(starting_time);
+	// pr_info("starting_time: %lu", starting_time->tv_nsec);
+	starting_time = ktime_get();
+	pr_info("starting_time: %llu \n", starting_time);
 
 
-	// write_guest_free_pages();
 
 	return 0;
 error:

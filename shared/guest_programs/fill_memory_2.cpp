@@ -18,6 +18,6 @@ int main(){
 	// write in memory
 	for(long i = 0; i < size; i++)
 		fill[i] = ('a' + i);
-	system("read -p 'Press Enter to continue...' var");
+	// system("read -p 'Press Enter to continue...' var");
 	return 0;
 }
