@@ -50,6 +50,8 @@
 #define PROGRAM_MEMORY_INFO 					3
 #define PROGRAM_SET_MAXIMUM_ORDER				4
 #define FIRST_ROUND_MIGRATION					20
+#define ENABLE_MIGRATION_SETUP_OPTIMIZATION     10
+#define DISABLE_MIGRATION_SETUP_OPTIMIZATION    11
 /* version defines */
 #define DEFAULT_VERSION 						1
 
@@ -83,12 +85,7 @@ struct bpf_injection_msg_t prepare_bpf_injection_message(const char* path, const
 	int fd;
 	mymsg.header.version = DEFAULT_VERSION;
 	mymsg.header.type = header_type;
-	#if 0
-	const char *prog_names[1] = {"test"};
-	printf("prima di assegnamento \n");
-	// prog_names[1] = new section_name;
-	printf("dopo assegnamento \n");
-	#endif
+
     GElf_Ehdr ehdr;
     int ret = -1;
     Elf *elf;
